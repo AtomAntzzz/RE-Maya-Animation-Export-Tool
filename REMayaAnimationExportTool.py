@@ -1,4 +1,4 @@
-# RE Noesis Animation Export Tool
+# RE Maya Animation Export Tool
 # Version: v0.1
 # Last Release: May 29, 2025
 # Author: AtomAntzzz
@@ -24,7 +24,7 @@ class AnimationExporterUI:
         # 创建窗口
         self.window = cmds.window(
             self.window_name,
-            title="RE Noesis Animation Export Tool",
+            title="RE Maya Animation Export Tool",
             widthHeight=(420, 400),
             resizeToFitChildren=True,
             sizeable=False
@@ -39,7 +39,7 @@ class AnimationExporterUI:
         )
         
         # 标题
-        cmds.text(label="RE Noesis Animation Export Tool", font="boldLabelFont", height=25)
+        cmds.text(label="RE Maya Animation Export Tool", font="boldLabelFont", height=25)
         cmds.separator(height=15, style="in")
         
         # Paste Noesis List按钮
