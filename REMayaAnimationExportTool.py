@@ -1,6 +1,6 @@
 # RE Maya Animation Export Tool
-# Version: v0.1
-# Last Release: May 29, 2025
+# Version: v0.11
+# Last Release: May 31, 2025
 # Author: AtomAntzzz
 
 import maya.cmds as cmds
@@ -25,7 +25,7 @@ class AnimationExporterUI:
         self.window = cmds.window(
             self.window_name,
             title="RE Maya Animation Export Tool",
-            widthHeight=(420, 400),
+            widthHeight=(420, 450),  # 增加高度以容纳新按钮
             resizeToFitChildren=True,
             sizeable=False
         )
@@ -61,6 +61,16 @@ class AnimationExporterUI:
             height=25
         )
         cmds.menuItem(label="No animations loaded", parent=self.animation_combo)
+        
+        # 添加 Set Timeline Range 按钮
+        self.set_timeline_button = cmds.button(
+            label="Set Timeline to Selected Animation",
+            command=self.set_timeline_range,
+            height=30,
+            enable=False,
+            backgroundColor=(0.6, 0.5, 0.8),
+            annotation="Adjust Maya timeline to match the selected animation's frame range"
+        )
         
         cmds.separator(height=15)
         
@@ -156,6 +166,10 @@ class AnimationExporterUI:
                 else:
                     print(f"Warning: Could not parse line: {line}")
             
+            # 修正blend pose条目的帧数并重新计算起始帧
+            if self.animation_data:
+                self.fix_blend_pose_frames()
+            
             if self.animation_data:
                 # 清空并更新下拉列表
                 menu_items = cmds.optionMenu(self.animation_combo, query=True, itemListLong=True)
@@ -170,6 +184,7 @@ class AnimationExporterUI:
                 # 启用控件
                 cmds.optionMenu(self.animation_combo, edit=True, enable=True)
                 cmds.button(self.export_button, edit=True, enable=True)
+                cmds.button(self.set_timeline_button, edit=True, enable=True)
                 
                 self.update_status(f"Successfully parsed {len(self.animation_data)} animations")
                 print(f"Parsed {len(self.animation_data)} animations successfully")
@@ -189,6 +204,96 @@ class AnimationExporterUI:
             anim = self.animation_data[selected_index]
             self.update_status(f"Selected: {anim['name']} ({anim['frame_count']} frames, ID: {anim['id']})")
     
+    def set_timeline_range(self, *args):
+        """设置timeline范围为选中动画的范围"""
+        if not self.animation_data:
+            cmds.warning("No animation data available!")
+            return
+        
+        selected_index = cmds.optionMenu(self.animation_combo, query=True, select=True) - 1
+        if 0 <= selected_index < len(self.animation_data):
+            anim = self.animation_data[selected_index]
+            
+            try:
+                # 设置动画范围
+                cmds.playbackOptions(
+                    minTime=anim['start_frame'],
+                    maxTime=anim['end_frame'],
+                    animationStartTime=anim['start_frame'],
+                    animationEndTime=anim['end_frame']
+                )
+                
+                # 将当前时间设置为动画开始帧
+                cmds.currentTime(anim['start_frame'])
+                
+                # 更新状态
+                self.update_status(f"Timeline set to {anim['name']}: frames {anim['start_frame']}-{anim['end_frame']}")
+                
+                print(f"Timeline range set to: {anim['start_frame']}-{anim['end_frame']} for animation '{anim['name']}'")
+                
+            except Exception as e:
+                error_msg = f"Failed to set timeline range: {str(e)}"
+                cmds.error(error_msg)
+                self.update_status("Failed to set timeline range")
+        else:
+            cmds.warning("Invalid animation selection!")
+    
+    def fix_blend_pose_frames(self):
+        """修正blend pose条目的帧数并重新计算起始帧"""
+        corrected_animations = []
+        current_start_frame = 0
+        
+        for i, anim in enumerate(self.animation_data):
+            # 检查是否是blend pose条目（包含_blend*_*pose_模式）
+            is_blend_pose = "_blend" in anim['name'].lower() and "_pose_" in anim['name'].lower()
+            
+            if is_blend_pose:
+                # 修正blend pose的帧数为1
+                corrected_frame_count = 1
+                print(f"Corrected blend pose '{anim['name']}': {anim['frame_count']} frames -> {corrected_frame_count} frame")
+            else:
+                corrected_frame_count = anim['frame_count']
+            
+            # 重新计算起始帧
+            if i == 0:
+                # 第一个动画保持原始起始帧
+                new_start_frame = anim['start_frame']
+            else:
+                # 后续动画的起始帧基于前一个动画的结束帧+1
+                new_start_frame = current_start_frame
+            
+            new_end_frame = new_start_frame + corrected_frame_count - 1
+            
+            corrected_anim = {
+                'name': anim['name'],
+                'start_frame': new_start_frame,
+                'frame_count': corrected_frame_count,
+                'end_frame': new_end_frame,
+                'id': anim['id'],
+                'original_frame_count': anim['frame_count']  # 保存原始帧数用于调试
+            }
+            
+            corrected_animations.append(corrected_anim)
+            
+            # 更新下一个动画的起始帧
+            current_start_frame = new_end_frame + 1
+            
+            # 如果有修正，输出调试信息
+            if is_blend_pose or new_start_frame != anim['start_frame']:
+                print(f"Animation '{anim['name']}': "
+                      f"start {anim['start_frame']}->{new_start_frame}, "
+                      f"frames {anim['frame_count']}->{corrected_frame_count}, "
+                      f"end {anim['end_frame']}->{new_end_frame}")
+        
+        # 替换原始数据
+        self.animation_data = corrected_animations
+        
+        # 统计修正的数量
+        blend_pose_count = sum(1 for anim in corrected_animations 
+                              if "_blend" in anim['name'].lower() and "_pose_" in anim['name'].lower())
+        if blend_pose_count > 0:
+            print(f"Fixed {blend_pose_count} blend pose animations and recalculated frame ranges")
+    
     def on_export_option_changed(self, *args):
         """导出选项改变时的处理"""
         selected_radio = cmds.radioCollection(self.radio_collection, query=True, select=True)
@@ -198,6 +303,7 @@ class AnimationExporterUI:
             # Export Selected Animation 被选中
             if self.animation_data:  # 只有在有动画数据时才启用下拉列表
                 cmds.optionMenu(self.animation_combo, edit=True, enable=True)
+                cmds.button(self.set_timeline_button, edit=True, enable=True)
                 selected_index = cmds.optionMenu(self.animation_combo, query=True, select=True) - 1
                 if 0 <= selected_index < len(self.animation_data):
                     anim = self.animation_data[selected_index]
@@ -206,10 +312,12 @@ class AnimationExporterUI:
                     self.update_status("Export mode: Selected animation")
             else:
                 cmds.optionMenu(self.animation_combo, edit=True, enable=False)
+                cmds.button(self.set_timeline_button, edit=True, enable=False)
                 self.update_status("Export mode: Selected animation (No animations loaded)")
         else:
             # Export All Animations 被选中
             cmds.optionMenu(self.animation_combo, edit=True, enable=False)
+            cmds.button(self.set_timeline_button, edit=True, enable=False)
             if self.animation_data:
                 self.update_status(f"Export mode: All animations ({len(self.animation_data)} total)")
             else:
