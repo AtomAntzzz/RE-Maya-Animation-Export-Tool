@@ -1,6 +1,6 @@
 # RE Maya Animation Export Tool
-# Version: v0.11
-# Last Release: May 31, 2025
+# Version: v0.12
+# Last Release: June 4, 2025
 # Author: AtomAntzzz
 
 import maya.cmds as cmds
@@ -25,7 +25,7 @@ class AnimationExporterUI:
         self.window = cmds.window(
             self.window_name,
             title="RE Maya Animation Export Tool",
-            widthHeight=(420, 450),  # 增加高度以容纳新按钮
+            widthHeight=(420, 500),  # 增加窗口高度以容纳新按钮
             resizeToFitChildren=True,
             sizeable=False
         )
@@ -48,6 +48,15 @@ class AnimationExporterUI:
             command=self.show_input_dialog,
             height=35,
             backgroundColor=(0.45, 0.55, 0.7)
+        )
+        
+        # 添加fixframerateforDD2按钮
+        self.fix_framerate_button = cmds.button(
+            label="Fix Frame Rate for DD2",
+            command=self.fix_framerate_for_dd2,
+            height=35,
+            backgroundColor=(0.7, 0.45, 0.6),
+            annotation="Convert animation from 30fps to 60fps with frame offset for DD2 compatibility"
         )
         
         cmds.separator(height=15)
@@ -113,6 +122,65 @@ class AnimationExporterUI:
         
         # 显示窗口
         cmds.showWindow(self.window)
+    
+    def fix_framerate_for_dd2(self, *args):
+        """修复DD2动画帧速率为60fps"""
+        try:
+            # 检查是否有选中的对象
+            selected_objects = cmds.ls(selection=True, long=True)
+            if not selected_objects:
+                cmds.warning("Please select an object first!")
+                self.update_status("Error: No object selected for DD2 frame rate fix")
+                return
+            
+            self.update_status("Applying DD2 frame rate fix...")
+            
+            # 步骤1: 设置帧速率为30fps
+            cmds.currentUnit(time='ntsc')  # 30fps
+            print("Step 1: Set frame rate to 30fps")
+            
+            # 步骤2: 选择当前选中物体的所有子级
+            mel.eval('select -hierarchy;')
+            print(f"Step 2: Selected All Hierarchy")
+            
+            # 步骤3: 将时间缩短一半
+            try:
+                # 对选中的所有对象执行时间缩放
+                mel.eval('scaleKey -timeScale 0.5 -timePivot 0;')
+                print("Step 3: Applied time scale 0.5 with pivot at frame 0")
+                
+            except Exception as e:
+                print(f"Warning during scaleKey operation: {str(e)}")
+                # 即使scaleKey失败也继续执行后续步骤
+            
+            # 步骤4: 设置帧速率为60fps
+            cmds.currentUnit(time='ntscf')  # 60fps
+            print("Step 4: Set frame rate to 60fps")
+            
+            # 完成
+            self.update_status("DD2 frame rate fix completed successfully")
+            
+            # 显示完成对话框
+            cmds.confirmDialog(
+                title="DD2 Frame Rate Fix Complete",
+                message="Successfully applied DD2 frame rate fix:\n"
+                       "Fix animation speed issues caused by incorrect frame rate export settings in Noesis",
+                button=["OK"]
+            )
+            
+            print("DD2 frame rate fix completed successfully!")
+            
+        except Exception as e:
+            error_msg = f"DD2 frame rate fix failed: {str(e)}"
+            cmds.error(error_msg)
+            self.update_status("DD2 frame rate fix failed - Check script editor")
+            
+            cmds.confirmDialog(
+                title="DD2 Frame Rate Fix Error",
+                message=f"Failed to apply DD2 frame rate fix:\n{str(e)}",
+                button=["OK"],
+                icon="critical"
+            )
     
     def show_input_dialog(self, *args):
         """显示手动输入对话框"""
